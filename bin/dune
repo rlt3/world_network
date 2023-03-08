@@ -1,0 +1,4 @@
+(executable
+ (public_name world_network)
+ (name main)
+ (libraries world_network))
