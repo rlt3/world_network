@@ -1,14 +1,15 @@
-open String ;;
-
-(*
-
 open Unix ;;
+
+(* (fd, closed?) *)
+type connection = file_descr * bool ;;
 
 let new_socket () =
     let domain   = PF_INET in
     let ntype    = SOCK_STREAM in
     let protocol = 0 in
-    socket domain ntype protocol ;;
+    (socket domain ntype protocol, true) ;;
+
+(*
 
 let handle : file_descr -> file_descr = fun sock -> 
     let name     = gethostname () in
@@ -33,6 +34,6 @@ let running = ref true in
     while !running do
         print_string "Have you had enough yet? (y/n) ";
         let str = read_line () in
-        if length str > 0 then
-            if str.[0] = 'y' then running := false
+        if String.length str > 0 && str.[0] = 'y'
+            then running := false
     done;;
