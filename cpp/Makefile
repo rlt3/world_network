@@ -1,5 +1,5 @@
 all:
-	g++ -O2 -Iinclude/ -o socketserver main.cpp -lpthread
+	$(cxx) -O2 -Iinclude/ -o socketserver main.cpp -lpthread -lssl -lcrypto
 
 clean:
 	rm -f socketserver
