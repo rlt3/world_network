@@ -7,6 +7,10 @@
 #include "websocketpp/config/asio.hpp"
 #include "websocketpp/server.hpp"
 #include <iostream>
+#include <cstring>
+#include <cstdlib>
+#include <cstdio>
+#include <unistd.h>
 
 typedef websocketpp::server<websocketpp::config::asio_tls> server;
 
@@ -49,6 +53,13 @@ enum tls_mode {
     MOZILLA_MODERN = 2
 };
 
+const char *cert = NULL;
+const char *priv = NULL;
+const char *dh   = NULL;
+size_t cert_size = 0;
+size_t priv_size = 0;
+size_t dh_size   = 0;
+
 context_ptr on_tls_init(tls_mode mode, websocketpp::connection_hdl hdl) {
     namespace asio = websocketpp::lib::asio;
 
@@ -72,17 +83,15 @@ context_ptr on_tls_init(tls_mode mode, websocketpp::connection_hdl hdl) {
                              asio::ssl::context::single_dh_use);
         }
         ctx->set_password_callback(bind(&get_password));
-        ctx->use_certificate_chain_file("/etc/letsencrypt/live/world.leroy.works/fullchain.pem");
-        ctx->use_private_key_file("/etc/letsencrypt/live/world.leroy.works/privkey.pem", asio::ssl::context::pem);
 
-        // Example method of generating this file:
-        // `openssl dhparam -out dh.pem 2048`
-        // Mozilla Intermediate suggests 1024 as the minimum size to use
-        // Mozilla Modern suggests 2048 as the minimum size to use.
-        ctx->use_tmp_dh_file("/etc/letsencrypt/dh.pem");
+        auto certbuf = asio::const_buffer(cert, cert_size);
+        auto privbuf = asio::const_buffer(priv, priv_size);
+        auto dhbuf = asio::const_buffer(dh, dh_size);
+        ctx->use_certificate_chain(certbuf);
+        ctx->use_private_key(privbuf, asio::ssl::context::pem);
+        ctx->use_tmp_dh(dhbuf);
 
         std::string ciphers;
-
         if (mode == MOZILLA_MODERN) {
             ciphers = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK";
         } else {
@@ -98,7 +107,27 @@ context_ptr on_tls_init(tls_mode mode, websocketpp::connection_hdl hdl) {
     return ctx;
 }
 
-int main() {
+int
+main (int argc, char **argv)
+{
+    uid_t uid  = getuid();
+    uid_t euid = geteuid();
+    if (uid <= 0 || uid != euid) {
+        fputs("Please don't run this program as root.\n", stderr);
+        exit(1);
+    }
+
+    cert = getenv("cert");
+    priv = getenv("priv");
+    dh   = getenv("dh");
+    if (!(cert || priv || dh)) {
+        fputs("Environment error. Please start me by running `./launch.sh`.\n", stderr);
+        exit(1);
+    }
+    cert_size = strlen(cert);
+    priv_size = strlen(priv);
+    dh_size = strlen(dh);
+
     // Create a server endpoint
     server echo_server;
 
