@@ -19,9 +19,9 @@ typedef server::message_ptr message_ptr;
 
 // Define a callback to handle incoming messages
 void on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg) {
-    std::cout << "on_message called with hdl: " << hdl.lock().get()
-              << " and message: " << msg->get_payload()
-              << std::endl;
+    //std::cout << "on_message called with hdl: " << hdl.lock().get()
+    //          << " and message: " << msg->get_payload()
+    //          << std::endl;
 
     // check for a special command to instruct the server to stop listening so
     // it can be cleanly exited.
@@ -54,7 +54,7 @@ int main() {
         echo_server.set_message_handler(bind(&on_message,&echo_server,::_1,::_2));
 
         // Listen on port 9002
-        echo_server.listen(9002);
+        echo_server.listen(8090);
 
         // Start the server accept loop
         echo_server.start_accept();
