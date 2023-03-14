@@ -3,9 +3,6 @@
 #include <cstdio>
 #include <unistd.h>
 
-#include <iostream>
-#include <set>
-
 const char *_CERT = NULL;
 const char *_PRIV = NULL;
 const char *_DH   = NULL;
@@ -41,6 +38,8 @@ init_server ()
 #define _WEBSOCKETPP_CPP11_STRICT_
 #define _WEBSOCKETPP_CPP11_TYPE_TRAITS_
 
+#include <iostream>
+#include <set>
 #include "websocketpp/config/asio.hpp"
 #include "websocketpp/server.hpp"
 #include "websocketpp/common/thread.hpp"
@@ -80,133 +79,129 @@ struct action {
     server::message_ptr msg;
 };
 
-// See https://wiki.mozilla.org/Security/Server_Side_TLS for more details about
-// the TLS modes. The code below demonstrates how to implement both the modern
 enum tls_mode {
     MOZILLA_INTERMEDIATE = 1,
     MOZILLA_MODERN = 2
 };
 
-std::string get_password() {
-    return "test";
-}
-
-class broadcast_server {
+class Broadcast {
 public:
-    broadcast_server() {
+    Broadcast ()
+    {
         // Initialize Asio Transport
         m_server.init_asio();
 
         // Register handler callbacks
-        m_server.set_open_handler(bind(&broadcast_server::on_open,this,::_1));
-        m_server.set_close_handler(bind(&broadcast_server::on_close,this,::_1));
-        m_server.set_message_handler(bind(&broadcast_server::on_message,this,::_1,::_2));
-
-        //m_server.set_http_handler(bind(&broadcast_server::on_http,this,::_1,::_2));
-        m_server.set_tls_init_handler(bind(&broadcast_server::on_tls_init,this,MOZILLA_INTERMEDIATE,::_1));
+        auto on_open  = bind(&Broadcast::on_open, this, ::_1);
+        auto on_close = bind(&Broadcast::on_close, this, ::_1);
+        auto on_msg   = bind(&Broadcast::on_message, this, ::_1, ::_2);
+        auto on_http  = bind(&Broadcast::on_http, this, ::_1);
+        auto on_tls   = bind(&Broadcast::on_tls_init, this, ::_1);
+        m_server.set_open_handler(on_open);
+        m_server.set_close_handler(on_close);
+        m_server.set_message_handler(on_msg);
+        m_server.set_http_handler(on_http);
+        m_server.set_tls_init_handler(on_tls);
     }
 
-    //void on_open(connection_hdl hdl) {
-    void on_http(server* s, websocketpp::connection_hdl hdl) {
-        server::connection_ptr con = s->get_con_from_hdl(hdl);
+    void
+    on_http (websocketpp::connection_hdl hdl)
+    {
+        server::connection_ptr con = m_server.get_con_from_hdl(hdl);
 
         con->set_body("Hello World!");
         con->set_status(websocketpp::http::status_code::ok);
     }
 
-    context_ptr on_tls_init(tls_mode mode, websocketpp::connection_hdl hdl) {
+    context_ptr
+    on_tls_init (websocketpp::connection_hdl hdl)
+    {
         namespace asio = websocketpp::lib::asio;
 
+        // Just use Mozilla Modern which disables TLSv1
+        const tls_mode mode = MOZILLA_MODERN;
         std::cout << "on_tls_init called with hdl: " << hdl.lock().get() << std::endl;
         std::cout << "using TLS mode: " << (mode == MOZILLA_MODERN ? "Mozilla Modern" : "Mozilla Intermediate") << std::endl;
 
         context_ptr ctx = websocketpp::lib::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
 
         try {
-            if (mode == MOZILLA_MODERN) {
-                // Modern disables TLSv1
-                ctx->set_options(asio::ssl::context::default_workarounds |
-                                 asio::ssl::context::no_sslv2 |
-                                 asio::ssl::context::no_sslv3 |
-                                 asio::ssl::context::no_tlsv1 |
-                                 asio::ssl::context::single_dh_use);
-            } else {
-                ctx->set_options(asio::ssl::context::default_workarounds |
-                                 asio::ssl::context::no_sslv2 |
-                                 asio::ssl::context::no_sslv3 |
-                                 asio::ssl::context::single_dh_use);
-            }
-            ctx->set_password_callback(bind(&get_password));
+            ctx->set_options(asio::ssl::context::default_workarounds |
+                             asio::ssl::context::no_sslv2 |
+                             asio::ssl::context::no_sslv3 |
+                             asio::ssl::context::no_tlsv1 |
+                             asio::ssl::context::single_dh_use);
 
             ctx->use_certificate_chain(asio::const_buffer(_CERT, _CERT_SIZE));
             ctx->use_private_key(asio::const_buffer(_PRIV, _PRIV_SIZE),
                     asio::ssl::context::pem);
             ctx->use_tmp_dh(asio::const_buffer(_DH, _DH_SIZE));
 
-            std::string ciphers;
-            if (mode == MOZILLA_MODERN) {
-                ciphers = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK";
-            } else {
-                ciphers = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA";
-            }
-
-            if (SSL_CTX_set_cipher_list(ctx->native_handle() , ciphers.c_str()) != 1) {
-                std::cout << "Error setting cipher list" << std::endl;
+            if (SSL_CTX_set_cipher_list(ctx->native_handle(),
+                                        Broadcast::ciphers.c_str()) != 1) {
+                std::cerr << "Error setting cipher list" << std::endl;
             }
         } catch (std::exception& e) {
-            std::cout << "Exception: " << e.what() << std::endl;
+            std::cerr << "Exception: " << e.what() << std::endl;
         }
+
         return ctx;
     }
 
-    void run(uint16_t port) {
-        // listen on specified port
+    void
+    run (uint16_t port)
+    {
         m_server.listen(port);
-
-        // Start the server accept loop
         m_server.start_accept();
 
-        // Start the ASIO io_service run loop
         try {
             m_server.run();
         } catch (const std::exception & e) {
-            std::cout << e.what() << std::endl;
+            std::cerr << e.what() << std::endl;
         }
     }
 
-    void on_open(connection_hdl hdl) {
+    void
+    on_open (connection_hdl hdl)
+    {
         {
             lock_guard<mutex> guard(m_action_lock);
-            //std::cout << "on_open" << std::endl;
-            m_actions.push(action(SUBSCRIBE,hdl));
+            std::cout << "on_open" << std::endl;
+            m_actions.push(action(SUBSCRIBE, hdl));
         }
         m_action_cond.notify_one();
     }
 
-    void on_close(connection_hdl hdl) {
+    void
+    on_close (connection_hdl hdl)
+    {
         {
             lock_guard<mutex> guard(m_action_lock);
-            //std::cout << "on_close" << std::endl;
-            m_actions.push(action(UNSUBSCRIBE,hdl));
+            std::cout << "on_close" << std::endl;
+            m_actions.push(action(UNSUBSCRIBE, hdl));
         }
         m_action_cond.notify_one();
     }
 
-    void on_message(connection_hdl hdl, server::message_ptr msg) {
+    void
+    on_message (connection_hdl hdl, server::message_ptr msg)
+    {
         // queue message up for sending by processing thread
         {
             lock_guard<mutex> guard(m_action_lock);
-            //std::cout << "on_message" << std::endl;
-            m_actions.push(action(MESSAGE,hdl,msg));
+            std::cout << "on_message" << std::endl;
+            m_actions.push(action(MESSAGE, hdl, msg));
         }
         m_action_cond.notify_one();
     }
 
-    void process_messages() {
+    void
+    process_messages()
+    {
         while(1) {
             unique_lock<mutex> lock(m_action_lock);
 
-            while(m_actions.empty()) {
+            while (m_actions.empty()) {
                 m_action_cond.wait(lock);
             }
 
@@ -230,9 +225,11 @@ public:
                 }
             } else {
                 // undefined.
+                std::cerr << "Undefined message in process_message loop!\n";
             }
         }
     }
+
 private:
     typedef std::set<connection_hdl,std::owner_less<connection_hdl> > con_list;
 
@@ -243,16 +240,22 @@ private:
     mutex m_action_lock;
     mutex m_connection_lock;
     condition_variable m_action_cond;
+
+    static const std::string ciphers;
 };
 
-int main() {
+const std::string Broadcast::ciphers = "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK";
+
+int
+main()
+{
     init_server();
 
     try {
-    broadcast_server server_instance;
+    Broadcast server_instance;
 
     // Start a thread to run the processing loop
-    thread t(bind(&broadcast_server::process_messages, &server_instance));
+    thread t(bind(&Broadcast::process_messages, &server_instance));
 
     // Run the asio loop with the main thread
     server_instance.run(8086);
@@ -260,6 +263,6 @@ int main() {
     t.join();
 
     } catch (websocketpp::exception const & e) {
-        std::cout << e.what() << std::endl;
+        std::cerr << e.what() << std::endl;
     }
 }
