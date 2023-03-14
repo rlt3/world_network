@@ -58,11 +58,6 @@ using websocketpp::lib::lock_guard;
 using websocketpp::lib::unique_lock;
 using websocketpp::lib::condition_variable;
 
-/* on_open insert connection_hdl into channel
- * on_close remove connection_hdl from channel
- * on_message queue send to all channels
- */
-
 enum action_type {
     SUBSCRIBE,
     UNSUBSCRIBE,
@@ -88,10 +83,15 @@ class Broadcast {
 public:
     Broadcast ()
     {
-        // Initialize Asio Transport
         m_server.init_asio();
 
-        // Register handler callbacks
+        /*
+         * on_open - insert connection_hdl into channel
+         * on_close - remove connection_hdl from channel
+         * on_message - queue send to all channels
+         * on_http handle - http requests (index.html)
+         * on_tls_init - setup https connection using certs/keys
+         */
         auto on_open  = bind(&Broadcast::on_open, this, ::_1);
         auto on_close = bind(&Broadcast::on_close, this, ::_1);
         auto on_msg   = bind(&Broadcast::on_message, this, ::_1, ::_2);
@@ -196,7 +196,7 @@ public:
     }
 
     void
-    process_messages()
+    process_messages ()
     {
         while(1) {
             unique_lock<mutex> lock(m_action_lock);
@@ -254,10 +254,10 @@ main()
     try {
     Broadcast server_instance;
 
-    // Start a thread to run the processing loop
+    // starts a separate thread which processes messages
     thread t(bind(&Broadcast::process_messages, &server_instance));
 
-    // Run the asio loop with the main thread
+    // main thread turns into server loop
     server_instance.run(8086);
 
     t.join();
