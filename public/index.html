@@ -26,15 +26,47 @@
                 margin: 0;
             }
 
-            #screen canvas {
+            #screen, #chat {
                 margin: 0 auto;
-                /* Hide the gap for font descenders. */
+                width: 800px;
                 display: block;
+            }
+
+            #chat {
+                background-color: #FFF;
+                color: #000;
+                margin: 25px auto;
+                overflow-y: scroll;
+                height: 250px;
+            }
+
+            #chat-form {
+                margin: 0 auto;
+                width: 800px;
+            }
+
+            #chat-input, #chat-submit {
+                display: block;
+                float: left;
+            }
+
+            #chat-input {
+                width: 94%;
+            }
+
+            #chat-submit {
+                width: 5%;
             }
         </style>
     </head>
     <body>
         <div id="screen"></div>
+        <pre id="chat">
+        </pre>
+        <form id="chat-form">
+            <input id="chat-input" type="text" placeholder="Type to chat" />
+            <input id="chat-submit" type="submit" value="->" />
+        </form>
         <script type="module">
             import * as me from "./melonjs.module.js";
 
@@ -66,14 +98,31 @@
 
 			let socket = new WebSocket("wss://world.leroy.works:8086");
 
+            // Define our chat box and make sure it is empty
+            var elmChat = document.querySelector("#chat");
+            elmChat.textContent = "";
+
+            var elmChatInput = document.querySelector("#chat-input");
+            var elmChatForm = document.querySelector("#chat-form");
+            elmChatForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+
+                let msg = elmChatInput.value;
+                elmChatInput.value = "";
+
+                console.log("Sending `" + msg + "`");
+                socket.send(msg);
+            });
+
 			socket.onopen = function (_) {
 				console.log("[open] Connection established");
-				console.log("Sending to server");
-				socket.send("My name is Leroy");
+				console.log("Subscribing to server");
+				socket.send(Math.floor(Math.random() * 100));
 			};
 
 			socket.onmessage = function (event) {
 				console.log(`[message] received: ${event.data}`);
+                elmChat.textContent = elmChat.textContent + event.data + "\n";
 			};
 
 			socket.onclose = function (event) {

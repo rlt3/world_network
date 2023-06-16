@@ -251,6 +251,13 @@ main()
 {
     init_server();
 
+    /*
+     * Use fork & ptrace to spin off child server process. The parent merely
+     * watches the child and spins up new children should that child die
+     * prematurely. This ensures uptime and developing around it _now_ will
+     * increase productivity.
+     */
+
     try {
     Broadcast server_instance;
 
